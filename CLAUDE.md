@@ -32,6 +32,16 @@ src/
     filters/         ← exception filters
     decorators/      ← custom decorators
     pipes/           ← custom pipes
+  links/             ← Share & Earn short-links feature
+    dto/             ← create-link.dto.ts, link-stats-query.dto.ts
+    links.entity.ts
+    clicks.entity.ts
+    fraud-validation.util.ts
+    links.service.ts
+    links.controller.ts
+    links.module.ts
+    links.service.spec.ts
+    links.controller.spec.ts
   <feature>/         ← one folder per domain feature
     dto/             ← create-*.dto.ts, update-*.dto.ts
     <feature>.entity.ts
@@ -97,6 +107,10 @@ docker-compose.yml   ← postgres + backend services
 ## Current Features
 - **Health** (`GET /health`) — returns `{ status, db }` confirming DB connectivity
 - **Root** (`GET /`) — returns "Hello World!"
+- **Links** (Share & Earn short-links):
+  - `POST /links` — create a short link (idempotent on targetUrl, 201)
+  - `GET /:shortCode` — 302 redirect to target URL with async click tracking + fraud validation
+  - `GET /stats` — paginated global analytics with monthly earnings breakdown
 
 ## Environment
 - `.env` holds local config (not committed — see `.env.example`)
@@ -148,3 +162,9 @@ Create a DTO file with class-validator decorators in `src/<feature>/dto/<action>
 
 ## Before Every Commit
 Before creating any git commit, **always** run the "update context" skill first to ensure this CLAUDE.md reflects the current state of the project. Then commit the updated CLAUDE.md together with the rest of the changes.
+
+## AI Prompts Used (Share & Earn Feature)
+1. "Propose backend design + implementation plan for Share & Earn short-links" — full requirements
+2. "Store cents in DB, atomic guard for double-reward, composite index, normalize targetUrl"
+3. "Mock fraud validation in e2e, don't assert async random outcomes directly"
+4. Implementation: 8 atomic commits, each verified with `lint + test + e2e`
