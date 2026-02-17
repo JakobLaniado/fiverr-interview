@@ -45,18 +45,79 @@
 
 ## AI Usage and Prompts
 
-Built with **Claude Code** (Anthropic CLI, Claude Opus model). Key prompts used:
+Built with **Claude Code** (Anthropic CLI, Claude Opus 4.6 model) in VSCode extension.
 
-1. **Initial design prompt**: "Propose a backend design + implementation plan for a Fiverr Share & Earn short-links service" — provided full requirements (3 endpoints, fraud validation, concurrency constraints, stats format)
+### Tool Setup
 
-2. **Architecture refinements**:
-   - "Store cents in DB, convert on output" — switched from DECIMAL to INT for money
-   - "Add atomic guard for double-reward prevention" — added `UPDATE WHERE rewarded=false RETURNING id`
-   - "Add composite index clicks(linkId, clickedAt)" — optimized stats aggregation
-   - "Normalize targetUrl before insert" — added `.trim()` to prevent duplicates
+- **CLAUDE.md**: Project-level instruction file defining stack, conventions, coding style, testing guidelines, and skills (e.g. `new feature`, `verify`, `update context`). Claude reads this automatically on every conversation.
+- **Plan Mode**: Used Claude Code's plan mode to design the architecture before writing any code. The plan went through 5 review cycles with human feedback before approval.
+- **Commit workflow**: Each implementation step = 1 atomic commit, verified with `npm run lint && npm run test && npm run test:e2e` before committing.
 
-3. **Testing refinement**: "Don't assert reward/earnings directly in e2e — mock fraud validation to deterministic" — avoided flaky tests on async random outcomes
+### Conversation Prompts (Chronological)
 
-4. **Iterative implementation**: Each commit was verified with `npm run lint && npm run test && npm run test:e2e` before proceeding. TypeScript build errors (e.g. `import type` for express Response, exported interfaces for return types) were caught and fixed in-loop.
+**Prompt 1 — Initial Design Request:**
+> "You are my coding copilot for an interview task. I need you to propose a backend design + an implementation plan for a 'Fiverr Share & Earn' short-links service.
+> Goal: Create shareable short, clean, trackable URLs that redirect to seller-owned Fiverr pages. Sellers earn $0.05 credits per valid click.
+> Core loop: 1) Generate short link 2) Share it 3) Redirect + award $0.05 if fraud validation passes.
+> Functional requirements: POST /links, GET /:shortCode (302 redirect, async fraud check), GET /stats (paginated with monthly breakdown)."
 
-Total interaction: ~15 prompts across planning and implementation, with the AI writing all source code, tests, and documentation.
+*Result: Claude explored the codebase with 2 parallel agents, then designed the full architecture (DB schema, service methods, controller routes, test strategy).*
+
+**Prompt 2 — Stats Response Format Correction:**
+> "Notice that on /stats I need to get this back: [{ url, total_clicks, total_earning, monthly_breakdown: [{ month: '12/2025', earning: 1.00 }] }]"
+
+*Result: Simplified stats response — removed shortCode/shortUrl from stats, monthly_breakdown only contains month + earning.*
+
+**Prompt 3 — Money Storage + Double-Reward Guard:**
+> "Fix 2 critical correctness issues:
+> 1) Store cents in DB as INT, convert to float on API output.
+> 2) Double reward prevention must use atomic guard: UPDATE clicks SET rewarded=true WHERE id=$1 AND rewarded=false RETURNING id. Only increment link counters if row returned."
+
+*Result: Switched from DECIMAL to INT for all money columns. Added `rewarded` boolean column to clicks table. Implemented atomic UPDATE...RETURNING guard in processClickReward.*
+
+**Prompt 4 — Minor Improvements:**
+> "Add composite index clicks(linkId, clickedAt). Normalize targetUrl (trim) before insert. Fire-and-forget reward is best-effort; production uses a queue."
+
+*Result: Added composite index for stats performance, .trim() on targetUrl, documented trade-off in MANIFEST.*
+
+**Prompt 5 — E2E Testing Strategy:**
+> "In e2e, don't assert reward/earnings directly because fraud is async + random. Mock fraud validation to deterministic OR only assert total_clicks."
+
+*Result: E2e tests mock fraud-validation.util via jest.mock() for deterministic assertions. Both total_clicks and total_earning are tested reliably.*
+
+**Prompt 6 — Commit Structure:**
+> "Organize with a commit at each critical step. Senior level code."
+
+*Result: Plan restructured into 8 atomic commits, each with scope, verification step, and conventional commit message.*
+
+### Implementation Flow
+
+| Commit | Prompt/Action | What Changed |
+|---|---|---|
+| 1 | Claude implements plan step 1 | Link + Click entities, module, AppModule registration |
+| 2 | Claude implements plan step 2 | DTOs with class-validator, fraud validation utility |
+| 3 | Claude implements plan step 3 | LinksService — 5 methods with idempotency, atomic guard, batch stats |
+| 4 | Claude implements plan step 4 | LinksController — 3 routes, correct ordering (stats before :shortCode) |
+| 5 | Claude implements plan step 5 | 14 unit tests (service + controller), fraud validation mocked |
+| 6 | Claude implements plan step 6 | 11 e2e tests with deterministic fraud mock, real DB |
+| 7 | Human requests docs | README + MANIFEST documentation |
+| 8 | Claude updates config | CLAUDE.md features, .env.example with BASE_URL |
+
+### Bugs Caught During Implementation
+
+1. **TypeScript `import type` error** — Express `Response` type needed `import type` with `isolatedModules` + `emitDecoratorMetadata` enabled. Fixed by splitting into `import type { Response }`.
+2. **Unexported interface** — `StatsResponse` was private in the service but referenced by the controller's return type. Fixed by exporting the interface.
+3. **TypeORM `delete({})` error** — Empty criteria not allowed in TypeORM delete. E2e cleanup switched to raw `DELETE FROM` queries.
+4. **Test data leakage** — `afterEach` cleanup was failing (due to bug #3), causing data to leak between e2e tests. Fixed alongside bug #3.
+
+### Key Decisions Made by Human vs AI
+
+| Decision | Who | Rationale |
+|---|---|---|
+| Overall architecture (2 tables, denormalized counters) | AI proposed, human approved | Standard pattern for read-heavy analytics |
+| Integer cents for money | Human requested | Avoids floating-point precision bugs |
+| Atomic double-reward guard | Human requested | Prevents financial bugs under concurrency |
+| Fire-and-forget vs queue | AI proposed, human approved | Acceptable for demo; documented as trade-off |
+| Stats response shape | Human specified | `{ url, total_clicks, total_earning, monthly_breakdown }` |
+| Mock fraud in e2e | Human requested | Prevents flaky tests |
+| 8 atomic commits | Human requested | Senior-level git history |
