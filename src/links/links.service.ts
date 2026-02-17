@@ -11,19 +11,19 @@ const REWARD_CENTS = 5;
 const SHORT_CODE_LENGTH = 8;
 const MAX_GENERATION_ATTEMPTS = 3;
 
-interface MonthlyBreakdown {
+export interface MonthlyBreakdown {
   month: string;
   earning: number;
 }
 
-interface LinkStats {
+export interface LinkStats {
   url: string;
   total_clicks: number;
   total_earning: number;
   monthly_breakdown: MonthlyBreakdown[];
 }
 
-interface StatsResponse {
+export interface StatsResponse {
   data: LinkStats[];
   meta: {
     page: number;
